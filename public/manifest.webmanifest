@@ -1,0 +1,13 @@
+{
+  "name": "CS Litoral Serviços",
+  "short_name": "CS Litoral",
+  "description": "Sistema de gestão de prestação de serviços",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#E6E9EF",
+  "theme_color": "#E6E9EF",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/miro-servicos-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
