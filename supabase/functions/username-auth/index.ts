@@ -7,7 +7,6 @@ const corsHeaders = {
 }
 
 const usernamePattern = /^[a-z0-9][a-z0-9._-]{2,23}$/
-const internalEmailDomain = 'users.invalid'
 
 function response(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -62,7 +61,7 @@ Deno.serve(async (request: Request) => {
       if (lookupError) throw lookupError
       if (existing) return response({ ok: false, code: 'username_taken' })
 
-      email = `${username}@${internalEmailDomain}`
+      email = `${username}@${new URL(supabaseUrl).hostname}`
       const { data: created, error: createError } = await auth.auth.signUp({
         email,
         password,

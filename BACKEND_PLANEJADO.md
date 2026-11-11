@@ -67,7 +67,7 @@ Não publique nem configure a chave `service_role` no Vercel para este frontend.
 
 ## Login por nome de usuário
 
-O cadastro e o login aceitam nome de usuário e senha, sem campo de e-mail. O Supabase Auth exige um identificador compatível com e-mail, então a Edge Function cria endereços técnicos no domínio reservado `.invalid`; eles não representam caixas postais. O nome de usuário é mantido numa tabela privada e a senha nunca é armazenada por essa tabela nem enviada a serviços além do Supabase Auth.
+O cadastro e o login aceitam nome de usuário e senha, sem campo de e-mail. O Supabase Auth exige um identificador compatível com e-mail, então a Edge Function cria endereços técnicos com o domínio do próprio projeto Supabase; eles não representam caixas postais. O nome de usuário é mantido numa tabela privada e a senha nunca é armazenada por essa tabela nem enviada a serviços além do Supabase Auth.
 
 Não há recuperação de senha por e-mail. Se a senha for perdida, o administrador precisará redefini-la pelo painel do Supabase. Não remova nem altere os endereços técnicos das contas novas manualmente.
 
