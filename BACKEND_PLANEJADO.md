@@ -7,7 +7,7 @@ O aplicativo usa Supabase Auth e PostgreSQL. Os clientes, serviços, materiais e
 1. Crie um projeto no [Supabase](https://supabase.com/).
 2. No painel do projeto, abra **SQL Editor**, crie uma consulta e execute o conteúdo de `supabase/migrations/202611110001_initial_schema.sql`.
 3. Em **Project Settings → API**, copie a **Project URL** e a chave pública **anon** (ou **publishable**). Nunca use a chave `service_role` no aplicativo.
-4. Execute também `supabase/migrations/202611110002_username_auth.sql` no **SQL Editor**.
+4. Execute também `supabase/migrations/202611110002_username_auth.sql` no **SQL Editor**. Se já executou uma versão anterior desse arquivo, execute `supabase/migrations/202611110003_username_auth_service_permissions.sql` para habilitar o acesso restrito da Edge Function à tabela privada.
 5. Em **Authentication → Sign In / Providers → Email**, desative a confirmação de e-mail. Os usuários não informam um e-mail; a função de autenticação usa um endereço técnico interno que não recebe mensagens.
 6. Configure a Edge Function e publique-a conforme os passos abaixo.
 
@@ -22,7 +22,7 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=SUA_CHAVE_SECRETA
 supabase functions deploy username-auth
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` dá acesso administrativo ao projeto: configure-a somente nos secrets das Edge Functions do Supabase. Nunca coloque essa chave em `.env.local`, no Vercel ou no frontend. A função usa esse privilégio no servidor para localizar a conta pelo nome de usuário; as senhas são validadas pelo Supabase Auth.
+`SUPABASE_SERVICE_ROLE_KEY` dá acesso administrativo ao projeto: configure-a somente nos secrets das Edge Functions do Supabase. Nunca coloque essa chave em `.env.local`, no Vercel ou no frontend. A função usa esse privilégio no servidor para localizar a conta pelo nome de usuário; as senhas são validadas pelo Supabase Auth. A tabela de nomes concede a `service_role` apenas `SELECT` e `INSERT`; RLS continua bloqueando o acesso dos clientes.
 
 ### Vincular uma conta existente
 
