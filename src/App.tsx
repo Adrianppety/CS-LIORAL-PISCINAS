@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
+import homeIcon from '../icones/icons8-casa-50.png'
+import clientsIcon from '../icones/icons8-usuário-50.png'
+import servicesIcon from '../icones/icons8-cardápio-50.png'
+import paymentsIcon from '../icones/para compras/icons8-dinheiro-48.png'
+import reportsIcon from '../icones/icons8-pasta-50.png'
+import settingsIcon from '../icones/icons8-configurações-50.png'
+import backupIcon from '../icones/icons8-banco-de-dados-50.png'
 import { deleteClient as deleteCloudClient, deletePayment as deleteCloudPayment, deleteService as deleteCloudService, exportCloudData, importCloudData, loadCloudData, saveClient as saveCloudClient, savePayment as saveCloudPayment, saveService as saveCloudService, type CloudData, type DataBackup } from './cloudData'
 import { type Client, type Service, type ServiceMaterial, type ServicePayment } from './db'
 import { supabase, supabaseConfigError } from './supabaseClient'
 
-type Page = 'Visão geral' | 'Clientes' | 'Serviços' | 'Pagamentos' | 'Relatórios'
+type Page = 'Visão geral' | 'Clientes' | 'Serviços' | 'Pagamentos' | 'Relatórios' | 'Configurações'
 type ClientDraft = Omit<Client, 'id' | 'createdAt'>
 type ServiceDraft = Omit<Service, 'id'>
 
 const pages: { name: Page; icon: string }[] = [
-  { name: 'Visão geral', icon: '⌂' },
-  { name: 'Clientes', icon: '♧' },
-  { name: 'Serviços', icon: '◇' },
-  { name: 'Pagamentos', icon: '↕' },
-  { name: 'Relatórios', icon: '▤' },
+  { name: 'Visão geral', icon: homeIcon },
+  { name: 'Clientes', icon: clientsIcon },
+  { name: 'Serviços', icon: servicesIcon },
+  { name: 'Pagamentos', icon: paymentsIcon },
+  { name: 'Relatórios', icon: reportsIcon },
+  { name: 'Configurações', icon: settingsIcon },
 ]
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const parseDecimal = (value: string) => {
@@ -526,13 +534,39 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
   return <div className="min-h-screen bg-[#f8f6f1] text-stone-800"><div className="mx-auto flex min-h-screen max-w-[1440px]">
     <aside className="hidden w-[248px] shrink-0 border-r border-stone-200/80 bg-[#fbfaf7] px-5 py-8 md:flex md:flex-col"><Brand /><p className="mb-3 mt-12 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-stone-400">Menu principal</p><Nav page={page} setPage={setPage} /><div className="mt-auto border-t border-stone-200 pt-4"><p className="truncate px-3 text-xs text-stone-500">{email}</p><button onClick={() => void signOut()} className="button-link mt-2 px-3 text-sm font-semibold">Sair da conta</button></div></aside>
     <main className="min-w-0 flex-1 pb-24 md:pb-8">
-      <header className="sticky top-0 z-20 flex min-h-[76px] items-center justify-between gap-2 border-b border-stone-200/70 bg-[#f8f6f1]/90 px-3 backdrop-blur-md sm:px-8 lg:px-11"><div className="md:hidden"><Brand compact /></div><div className="hidden md:block"><p className="text-sm capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="font-serif text-[26px] leading-tight">{page}</h1></div><div className="flex items-center gap-1.5 sm:gap-2"><input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={(event) => void importBackup(event)} /><button type="button" onClick={() => void exportBackup()} aria-label="Exportar dados" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold sm:px-3"><span aria-hidden="true">⇩ </span><span className="hidden sm:inline">Exportar</span></button><button type="button" onClick={() => fileInput.current?.click()} aria-label="Importar dados" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold sm:px-3"><span aria-hidden="true">⇧ </span><span className="hidden sm:inline">Importar</span></button><button type="button" onClick={() => void signOut()} aria-label="Sair da conta" title="Sair da conta" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold md:hidden">Sair</button><button onClick={() => openServiceForm()} className="button-primary rounded-full px-3 py-2.5 text-xs font-semibold shadow-sm sm:px-5 sm:text-sm"><span className="mr-1.5">＋</span><span className="hidden sm:inline">Novo serviço</span><span className="sm:hidden">Novo</span></button></div></header>
+      <header className="sticky top-0 z-20 flex min-h-[76px] items-center justify-between gap-2 border-b border-stone-200/70 bg-[#f8f6f1]/90 px-3 backdrop-blur-md sm:px-8 lg:px-11"><div className="md:hidden"><Brand compact /></div><div className="hidden md:block"><p className="text-sm capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="font-serif text-[26px] leading-tight">{page}</h1></div><div className="flex items-center gap-1.5 sm:gap-2"><button type="button" onClick={() => void signOut()} aria-label="Sair da conta" title="Sair da conta" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold md:hidden">Sair</button><button onClick={() => openServiceForm()} className="button-primary rounded-full px-3 py-2.5 text-xs font-semibold shadow-sm sm:px-5 sm:text-sm"><span className="mr-1.5">＋</span><span className="hidden sm:inline">Novo serviço</span><span className="sm:hidden">Novo</span></button></div></header>
       <div className="mx-auto max-w-[1160px] px-5 py-7 sm:px-8 lg:px-11 lg:py-9"><div className="mb-7 md:hidden"><p className="text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="mt-1 font-serif text-3xl">{page}</h1></div>
         {page === 'Visão geral' && <section>
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3"><div><p className="font-serif text-2xl">Resumo da operação</p><p className="mt-1 text-sm font-semibold text-stone-500">Acompanhe clientes, serviços e resultados.</p></div><span className="rounded-full border border-stone-200 bg-white/70 px-3 py-1.5 text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span></div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-6 lg:gap-4"><Metric label="Clientes cadastrados" value={String(clients.length)} icon={<MetricIcon name="clients" />} tint="sand" detail="base de clientes" /><Metric label="Serviços realizados" value={String(services.length)} icon={<MetricIcon name="services" />} tint="sage" detail="registros no histórico" /><Metric label="Faturamento total" value={money(totalCharged)} icon={<MetricIcon name="revenue" />} tint="rose" detail="valor cobrado" /><Metric label="Gastos terceirizados" value={money(totalOutsourced)} icon={<MetricIcon name="outsourced" />} tint="gold" detail="custo dos serviços" /><Metric label="Gastos com materiais" value={money(totalMaterials)} icon={<MetricIcon name="materials" />} tint="sand" detail="custo dos materiais" /><Metric label="Lucro total" value={money(totalProfit)} icon={<MetricIcon name="profit" />} tint="sage" detail="após materiais e terceirização" /></div>
           <section className="mt-7 rounded-[22px] border border-stone-200/70 bg-white p-5 sm:p-6"><div className="mb-5 flex items-center justify-between gap-3"><div><h2 className="font-serif text-xl">Serviços recentes</h2><p className="mt-1 text-xs text-stone-500">Últimos registros adicionados</p></div><button onClick={() => setPage('Serviços')} className="button-link text-xs font-semibold">Ver todos →</button></div>{recentServices.length ? <div className="divide-y divide-stone-100">{recentServices.map((service) => <ServiceRow key={service.id} service={service} clientName={clientById.get(service.clientId)?.name ?? 'Cliente'} onEdit={() => openServiceForm(service)} onDelete={() => void deleteService(service)} />)}</div> : <EmptyState text="Seus serviços registrados aparecerão aqui." />}</section>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2"><QuickAction icon="♧" title="Novo cliente" description="Cadastre os dados de um cliente" onClick={() => openClientForm()} /><QuickAction icon="◇" title="Registrar serviço" description="Vincule um serviço a um cliente" onClick={() => openServiceForm()} /></div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2"><QuickAction icon={<MetricIcon name="clients" className="h-5 w-5" />} title="Novo cliente" description="Cadastre os dados de um cliente" onClick={() => openClientForm()} /><QuickAction icon={<MetricIcon name="services" className="h-5 w-5" />} title="Registrar serviço" description="Vincule um serviço a um cliente" onClick={() => openServiceForm()} /></div>
+        </section>}
+
+        {page === 'Configurações' && <section>
+          <PageHeading title="Configurações" subtitle="Gerencie seus dados e sua conta." />
+          <section className="rounded-[22px] border border-stone-200/70 bg-white p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#E6E9EF]"><img src={backupIcon} alt="" className="h-6 w-6 object-contain" /></span>
+              <div><h2 className="font-serif text-xl">Backup dos dados</h2><p className="mt-1 text-sm text-stone-500">Salve uma cópia dos seus clientes, serviços e pagamentos ou restaure um backup anterior.</p></div>
+            </div>
+            <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={(event) => void importBackup(event)} />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => void exportBackup()} className="button-card flex items-center gap-3 rounded-xl border p-4 text-left">
+                <img src={backupIcon} alt="" className="h-7 w-7 shrink-0 object-contain" />
+                <span><span className="block text-sm font-semibold">Exportar backup</span><span className="mt-0.5 block text-xs text-stone-500">Baixar uma cópia dos seus dados</span></span>
+              </button>
+              <button type="button" onClick={() => fileInput.current?.click()} className="button-card flex items-center gap-3 rounded-xl border p-4 text-left">
+                <img src={reportsIcon} alt="" className="h-7 w-7 shrink-0 object-contain" />
+                <span><span className="block text-sm font-semibold">Importar backup</span><span className="mt-0.5 block text-xs text-stone-500">Restaurar dados de um arquivo JSON</span></span>
+              </button>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-stone-500">A importação mescla os dados: registros com o mesmo ID são atualizados, os demais são adicionados e seus outros registros são mantidos.</p>
+          </section>
+          <section className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-[22px] border border-stone-200/70 bg-white p-5 sm:p-6">
+            <div className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#E6E9EF]"><img src={clientsIcon} alt="" className="h-6 w-6 object-contain" /></span><div><h2 className="font-serif text-lg">Sua conta</h2><p className="mt-1 text-sm text-stone-500">{email}</p></div></div>
+            <button type="button" onClick={() => void signOut()} className="button-secondary rounded-xl px-4 py-2.5 text-sm font-semibold">Sair da conta</button>
+          </section>
         </section>}
 
         {page === 'Clientes' && <section><PageHeading title="Clientes" subtitle="Consulte cadastros e acompanhe o histórico de serviços." button="＋ Adicionar cliente" onClick={() => openClientForm()} /><div className="mb-4"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou telefone..." className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#b48b50] sm:max-w-md" /></div><div className="overflow-hidden rounded-[22px] border border-stone-200/70 bg-white"><div className="hidden grid-cols-[1.5fr_1fr_1fr] gap-3 bg-[#fbfaf7] px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400 sm:grid"><span>Cliente</span><span>Serviços</span><span>Faturamento</span></div>{visibleClients.map((client) => { const related = services.filter((service) => service.clientId === client.id); const charged = related.reduce((total, service) => total + service.chargedAmount, 0); return <button key={client.id} onClick={() => setSelectedClientId(client.id ?? null)} className="button-row flex w-full items-center gap-3 border-t border-stone-100 px-4 py-4 text-left first:border-0 sm:grid sm:grid-cols-[1.5fr_1fr_1fr] sm:gap-3 sm:px-5"><Avatar name={client.name} /><span className="min-w-0 flex-1 sm:flex-auto"><span className="block truncate text-sm font-semibold">{client.name}</span><span className="block truncate text-xs text-stone-500">{client.phone || 'Sem telefone cadastrado'}</span></span><span className="hidden text-sm text-stone-600 sm:block">{related.length}</span><span className="financial-value whitespace-nowrap text-right text-sm font-semibold sm:text-left">{money(charged)}<span className="block text-[10px] font-normal text-stone-400 sm:hidden">faturamento</span></span></button> })}{!visibleClients.length && <EmptyState text={clients.length ? 'Nenhum cliente encontrado.' : 'Cadastre seu primeiro cliente para começar.'} />}</div></section>}
@@ -571,7 +605,7 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
     </main>
   </div>
 
-  <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 flex w-full justify-between border-t border-stone-200/80 bg-[#fbfaf7]/95 px-1 pt-2 backdrop-blur-md md:hidden">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} className={`button-mobile-nav flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-1 text-[10px] ${page === item.name ? 'button-mobile-nav-active' : ''}`}><span className="text-xl leading-6">{item.icon}</span>{item.name === 'Visão geral' ? 'Início' : item.name}</button>)}</nav>
+  <nav aria-label="Navegação principal" className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-6 border-t border-stone-200/80 bg-[#fbfaf7]/95 px-1 pt-2 backdrop-blur-md md:hidden">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} aria-label={item.name} aria-current={page === item.name ? 'page' : undefined} title={item.name} className={`button-mobile-nav flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-[9px] leading-3 ${page === item.name ? 'button-mobile-nav-active' : ''}`}><img src={item.icon} alt="" className="h-5 w-5 object-contain brightness-0 invert" />{item.name === 'Visão geral' ? 'Início' : item.name === 'Configurações' ? 'Ajustes' : item.name}</button>)}</nav>
   {message && <div role="status" className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-stone-800 px-5 py-3 text-center text-sm text-white shadow-lg md:bottom-7">{message}</div>}
   {modal === 'client' && <Modal title={editingClient ? 'Editar cliente' : 'Novo cliente'} onClose={() => { setModal(null); setEditingClient(undefined) }}><ClientForm key={editingClient?.id ?? 'new-client'} initial={editingClient} onClose={() => { setModal(null); setEditingClient(undefined) }} onSave={(draft) => void saveClient(draft)} /></Modal>}
   {modal === 'service' && <Modal title={editingService ? 'Editar serviço' : 'Novo serviço'} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }}><ServiceForm key={editingService?.id ?? `new-service-${initialServiceClientId ?? ''}`} clients={clients} initial={editingService} initialClientId={initialServiceClientId} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }} onSave={(draft) => void saveService(draft)} /></Modal>}
@@ -587,10 +621,10 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
 }
 
 function Brand({ compact = false }: { compact?: boolean }) {
-  return <div className="flex items-center gap-2.5"><span className="brand-mark" aria-hidden="true">CS</span><span className={`brand-name font-serif text-xl tracking-wide text-stone-700 ${compact ? 'text-lg' : ''}`}>CS Litoral Serviços</span></div>
+  return <div className="flex items-center gap-2.5"><span className="brand-mark" aria-hidden="true">CS</span><span className={`brand-name font-serif text-xl tracking-wide text-stone-700 ${compact ? 'max-w-[110px] text-sm leading-tight' : ''}`}>CS Litoral Serviços</span></div>
 }
 function Nav({ page, setPage }: { page: Page; setPage: (page: Page) => void }) {
-  return <nav className="space-y-1">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} className={`button-nav flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm ${page === item.name ? 'button-nav-active' : ''}`}><span className="w-5 text-center text-lg">{item.icon}</span>{item.name}</button>)}</nav>
+  return <nav aria-label="Navegação principal" className="space-y-1">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} aria-current={page === item.name ? 'page' : undefined} className={`button-nav flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm ${page === item.name ? 'button-nav-active' : ''}`}><img src={item.icon} alt="" className="h-5 w-5 object-contain brightness-0 invert" />{item.name}</button>)}</nav>
 }
 type MetricIconName = 'clients' | 'services' | 'revenue' | 'outsourced' | 'materials' | 'profit'
 
