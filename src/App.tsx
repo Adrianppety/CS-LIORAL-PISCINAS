@@ -296,7 +296,7 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
     <h1 className="mt-8 font-serif text-3xl">{creatingAccount ? 'Criar conta' : 'Entrar'}</h1>
     <p className="mt-2 text-sm text-stone-500">Acesse com seu nome de usuário e senha.</p>
     <form onSubmit={submit} className="mt-6 space-y-4">
-      <Field label="Nome de usuário" name="username" type="text" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,23}" title="Use 3 a 24 caracteres: letras sem acento, números, ponto, hífen ou sublinhado." required />
+      <Field label="Nome de usuário" name="username" type="text" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,23}" title="Use 3 a 24 caracteres: letras sem acento, números, ponto, hífen ou sublinhado." required />
       <Field label="Senha" name="password" type="password" autoComplete={creatingAccount ? 'new-password' : 'current-password'} minLength={8} required />
       {message && <p role="status" className="text-sm text-stone-600">{message}</p>}
       <button disabled={busy} className="button-primary w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">{busy ? 'Aguarde...' : creatingAccount ? 'Criar conta' : 'Entrar'}</button>
