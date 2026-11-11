@@ -123,6 +123,18 @@ header.sticky p { color: var(--color-ink); }
 }
 .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 
+@media (max-width: 639px) {
+  main [class~="text-xs"] {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+  }
+  main [class~="text-[10px]"],
+  main [class~="text-[11px]"] {
+    font-size: 0.75rem;
+    line-height: 1.1rem;
+  }
+}
+
 @media print {
   @page { size: A4; margin: 14mm; }
   body { background: #fff !important; }

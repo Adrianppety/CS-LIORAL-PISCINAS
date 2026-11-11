@@ -20,7 +20,6 @@ const pages: { name: Page; icon: string }[] = [
   { name: 'Clientes', icon: clientsIcon },
   { name: 'Serviços', icon: servicesIcon },
   { name: 'Pagamentos', icon: paymentsIcon },
-  { name: 'Relatórios', icon: reportsIcon },
   { name: 'Configurações', icon: settingsIcon },
 ]
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -545,6 +544,11 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
 
         {page === 'Configurações' && <section>
           <PageHeading title="Configurações" subtitle="Gerencie seus dados e sua conta." />
+          <button type="button" onClick={() => setPage('Relatórios')} className="button-card mb-4 flex w-full items-center gap-3 rounded-[22px] border bg-white p-5 text-left sm:p-6">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#E6E9EF]"><img src={reportsIcon} alt="" className="h-6 w-6 object-contain" /></span>
+            <span className="min-w-0 flex-1"><span className="block font-serif text-lg">Relatórios</span><span className="mt-1 block text-sm text-stone-500">Consulte faturamento, custos e lucro por período.</span></span>
+            <span aria-hidden="true" className="text-xl text-stone-500">→</span>
+          </button>
           <section className="rounded-[22px] border border-stone-200/70 bg-white p-5 sm:p-6">
             <div className="flex items-start gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#E6E9EF]"><img src={backupIcon} alt="" className="h-6 w-6 object-contain" /></span>
@@ -605,7 +609,7 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
     </main>
   </div>
 
-  <nav aria-label="Navegação principal" className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-6 border-t border-stone-200/80 bg-[#fbfaf7]/95 px-1 pt-2 backdrop-blur-md md:hidden">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} aria-label={item.name} aria-current={page === item.name ? 'page' : undefined} title={item.name} className={`button-mobile-nav flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-[9px] leading-3 ${page === item.name ? 'button-mobile-nav-active' : ''}`}><img src={item.icon} alt="" className="h-5 w-5 object-contain brightness-0 invert" />{item.name === 'Visão geral' ? 'Início' : item.name === 'Configurações' ? 'Ajustes' : item.name}</button>)}</nav>
+  <nav aria-label="Navegação principal" className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-5 border-t border-stone-200/80 bg-[#fbfaf7]/95 px-1 pt-2 backdrop-blur-md md:hidden">{pages.map((item) => { const isActive = page === item.name || (item.name === 'Configurações' && page === 'Relatórios'); return <button key={item.name} onClick={() => setPage(item.name)} aria-label={item.name} aria-current={isActive ? 'page' : undefined} title={item.name} className={`button-mobile-nav flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1 text-[11px] leading-4 ${isActive ? 'button-mobile-nav-active' : ''}`}><img src={item.icon} alt="" className="h-6 w-6 object-contain brightness-0 invert" />{item.name === 'Visão geral' ? 'Início' : item.name === 'Configurações' ? 'Ajustes' : item.name}</button> })}</nav>
   {message && <div role="status" className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-stone-800 px-5 py-3 text-center text-sm text-white shadow-lg md:bottom-7">{message}</div>}
   {modal === 'client' && <Modal title={editingClient ? 'Editar cliente' : 'Novo cliente'} onClose={() => { setModal(null); setEditingClient(undefined) }}><ClientForm key={editingClient?.id ?? 'new-client'} initial={editingClient} onClose={() => { setModal(null); setEditingClient(undefined) }} onSave={(draft) => void saveClient(draft)} /></Modal>}
   {modal === 'service' && <Modal title={editingService ? 'Editar serviço' : 'Novo serviço'} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }}><ServiceForm key={editingService?.id ?? `new-service-${initialServiceClientId ?? ''}`} clients={clients} initial={editingService} initialClientId={initialServiceClientId} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }} onSave={(draft) => void saveService(draft)} /></Modal>}
@@ -624,7 +628,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="flex items-center gap-2.5"><span className="brand-mark" aria-hidden="true">CS</span><span className={`brand-name font-serif text-xl tracking-wide text-stone-700 ${compact ? 'max-w-[110px] text-sm leading-tight' : ''}`}>CS Litoral Serviços</span></div>
 }
 function Nav({ page, setPage }: { page: Page; setPage: (page: Page) => void }) {
-  return <nav aria-label="Navegação principal" className="space-y-1">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} aria-current={page === item.name ? 'page' : undefined} className={`button-nav flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm ${page === item.name ? 'button-nav-active' : ''}`}><img src={item.icon} alt="" className="h-5 w-5 object-contain brightness-0 invert" />{item.name}</button>)}</nav>
+  return <nav aria-label="Navegação principal" className="space-y-1">{pages.map((item) => { const isActive = page === item.name || (item.name === 'Configurações' && page === 'Relatórios'); return <button key={item.name} onClick={() => setPage(item.name)} aria-current={isActive ? 'page' : undefined} className={`button-nav flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm ${isActive ? 'button-nav-active' : ''}`}><img src={item.icon} alt="" className="h-5 w-5 object-contain brightness-0 invert" />{item.name}</button> })}</nav>
 }
 type MetricIconName = 'clients' | 'services' | 'revenue' | 'outsourced' | 'materials' | 'profit'
 
@@ -659,7 +663,7 @@ function MetricIcon({ name, className = 'h-4 w-4' }: { name: MetricIconName; cla
 
 function Metric({ label, value, icon, tint, detail }: { label: string; value: string; icon: ReactNode; tint: string; detail: string }) {
   const colors: Record<string, string> = { sand: 'bg-[#f3eee4] text-[#9f7945]', sage: 'bg-[#edf2ed] text-[#718a77]', rose: 'bg-[#f5eeeb] text-[#a37b68]', gold: 'bg-[#f6f0df] text-[#a8863d]' }
-  return <article className="rounded-[20px] border border-stone-200/70 bg-white p-4 sm:p-5"><div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold leading-tight text-stone-500 sm:text-xs">{label}</p><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${colors[tint]}`}>{icon}</span></div><p className="financial-value mt-3 truncate text-xl font-semibold sm:text-2xl">{value}</p><p className="mt-1 truncate text-[10px] text-stone-400 sm:text-xs">{detail}</p></article>
+  return <article className="rounded-[20px] border border-stone-200/70 bg-white p-4 sm:p-5"><div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold leading-tight text-stone-500 sm:text-xs">{label}</p><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${colors[tint]}`}>{icon}</span></div><p className="financial-value mt-3 truncate text-xl font-semibold sm:text-2xl">{value}</p><p className="mt-1 text-[10px] text-stone-400 sm:truncate sm:text-xs">{detail}</p></article>
 }
 function PageHeading({ title, subtitle, button, onClick }: { title: string; subtitle: string; button?: string; onClick?: () => void }) {
   return <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-serif text-2xl">{title}</h2><p className="mt-1 text-sm font-semibold text-stone-500">{subtitle}</p></div>{button && <button onClick={onClick} className="button-primary rounded-full px-4 py-2.5 text-sm font-semibold">{button}</button>}</div>
