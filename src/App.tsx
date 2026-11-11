@@ -236,19 +236,45 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
     setBusy(true)
     setMessage('')
     const form = new FormData(event.currentTarget)
-    const email = String(form.get('email') ?? '').trim()
+    const username = String(form.get('username') ?? '').trim().toLowerCase()
     const password = String(form.get('password') ?? '')
+    if (!/^[a-z0-9][a-z0-9._-]{2,23}$/.test(username)) {
+      setMessage('Use um nome de usuário de 3 a 24 caracteres: letras sem acento, números, ponto, hífen ou sublinhado.')
+      setBusy(false)
+      return
+    }
+    if (password.length < 8 || password.length > 72) {
+      setMessage('A senha deve ter entre 8 e 72 caracteres.')
+      setBusy(false)
+      return
+    }
     try {
-      const result = creatingAccount
-        ? await client.auth.signUp({ email, password })
-        : await client.auth.signInWithPassword({ email, password })
-      if (result.error) throw result.error
-      setMessage(creatingAccount && !result.data.session
-        ? 'Conta criada. Verifique seu e-mail para confirmar o cadastro antes de entrar.'
-        : creatingAccount ? 'Conta criada com sucesso.' : 'Login realizado.')
+      const { data, error } = await client.functions.invoke<{
+        ok: boolean
+        code?: string
+        session?: { access_token: string; refresh_token: string }
+      }>('username-auth', {
+        body: { action: creatingAccount ? 'signup' : 'signin', username, password },
+      })
+      if (error) throw error
+      if (!data?.ok || !data.session) {
+        const messages: Record<string, string> = {
+          invalid_credentials: 'Usuário ou senha incorretos.',
+          username_taken: 'Esse nome de usuário já está em uso.',
+          invalid_username: 'O nome de usuário informado é inválido.',
+          invalid_password: 'A senha deve ter entre 8 e 72 caracteres.',
+          account_unavailable: 'Não foi possível acessar essa conta. Contate o administrador.',
+          email_confirmation_enabled: 'O administrador precisa desativar a confirmação de e-mail no Supabase.',
+          signup_failed: 'Não foi possível criar a conta. Verifique a configuração e tente novamente.',
+        }
+        setMessage(messages[data?.code ?? ''] ?? 'Não foi possível autenticar. Tente novamente.')
+        return
+      }
+      const { error: sessionError } = await client.auth.setSession(data.session)
+      if (sessionError) throw sessionError
     } catch (error) {
       console.error(error)
-      setMessage(error instanceof Error ? error.message : 'Não foi possível autenticar.')
+      setMessage('Não foi possível conectar ao serviço de autenticação. Tente novamente.')
     } finally {
       setBusy(false)
     }
@@ -257,14 +283,15 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5 py-10"><section className="w-full max-w-md rounded-[24px] border border-stone-200/70 bg-white p-7 shadow-sm sm:p-9">
     <Brand />
     <h1 className="mt-8 font-serif text-3xl">{creatingAccount ? 'Criar conta' : 'Entrar'}</h1>
-    <p className="mt-2 text-sm text-stone-500">Acesse seus clientes, serviços e pagamentos com segurança.</p>
+    <p className="mt-2 text-sm text-stone-500">Acesse com seu nome de usuário e senha.</p>
     <form onSubmit={submit} className="mt-6 space-y-4">
-      <Field label="E-mail" name="email" type="email" autoComplete="email" required />
+      <Field label="Nome de usuário" name="username" type="text" autoComplete="username" minLength={3} maxLength={24} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,23}" title="Use 3 a 24 caracteres: letras sem acento, números, ponto, hífen ou sublinhado." required />
       <Field label="Senha" name="password" type="password" autoComplete={creatingAccount ? 'new-password' : 'current-password'} minLength={8} required />
       {message && <p role="status" className="text-sm text-stone-600">{message}</p>}
       <button disabled={busy} className="button-primary w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">{busy ? 'Aguarde...' : creatingAccount ? 'Criar conta' : 'Entrar'}</button>
     </form>
     <button type="button" onClick={() => { setCreatingAccount((value) => !value); setMessage('') }} className="button-link mt-5 w-full text-center text-sm font-semibold">{creatingAccount ? 'Já tenho uma conta' : 'Criar uma conta'}</button>
+    <p className="mt-5 text-center text-xs leading-5 text-stone-400">Não há recuperação de senha por e-mail. Se perder a senha, contate o administrador.</p>
   </section></main>
 }
 
@@ -304,7 +331,7 @@ function App() {
   if (authLoading) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] text-sm text-stone-500">Conectando ao Supabase...</main>
   if (authError) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5"><p role="alert" className="rounded-xl bg-white p-6 text-sm text-red-700">Erro ao verificar a sessão: {authError}</p></main>
   if (!session) return <AuthScreen client={client} />
-  return <Dashboard key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} onSignOut={async () => {
+  return <Dashboard key={session.user.id} userId={session.user.id} email={session.user.user_metadata.username ?? 'Conta'} onSignOut={async () => {
     const { error } = await client.auth.signOut()
     if (error) throw error
   }} />
