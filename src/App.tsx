@@ -530,7 +530,7 @@ function Dashboard({ userId, email, onSignOut }: { userId: string; email: string
       <div className="mx-auto max-w-[1160px] px-5 py-7 sm:px-8 lg:px-11 lg:py-9"><div className="mb-7 md:hidden"><p className="text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="mt-1 font-serif text-3xl">{page}</h1></div>
         {page === 'Visão geral' && <section>
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3"><div><p className="font-serif text-2xl">Resumo da operação</p><p className="mt-1 text-sm font-semibold text-stone-500">Acompanhe clientes, serviços e resultados.</p></div><span className="rounded-full border border-stone-200 bg-white/70 px-3 py-1.5 text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span></div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6 lg:gap-4"><Metric label="Clientes cadastrados" value={String(clients.length)} icon="♧" tint="sand" detail="base de clientes" /><Metric label="Serviços realizados" value={String(services.length)} icon="◇" tint="sage" detail="registros no histórico" /><Metric label="Faturamento total" value={money(totalCharged)} icon="↗" tint="rose" detail="valor cobrado" /><Metric label="Gastos terceirizados" value={money(totalOutsourced)} icon="↙" tint="gold" detail="custo dos serviços" /><Metric label="Gastos com materiais" value={money(totalMaterials)} icon="▦" tint="sand" detail="custo dos materiais" /><Metric label="Lucro total" value={money(totalProfit)} icon="✧" tint="sage" detail="após materiais e terceirização" /></div>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-6 lg:gap-4"><Metric label="Clientes cadastrados" value={String(clients.length)} icon={<MetricIcon name="clients" />} tint="sand" detail="base de clientes" /><Metric label="Serviços realizados" value={String(services.length)} icon={<MetricIcon name="services" />} tint="sage" detail="registros no histórico" /><Metric label="Faturamento total" value={money(totalCharged)} icon={<MetricIcon name="revenue" />} tint="rose" detail="valor cobrado" /><Metric label="Gastos terceirizados" value={money(totalOutsourced)} icon={<MetricIcon name="outsourced" />} tint="gold" detail="custo dos serviços" /><Metric label="Gastos com materiais" value={money(totalMaterials)} icon={<MetricIcon name="materials" />} tint="sand" detail="custo dos materiais" /><Metric label="Lucro total" value={money(totalProfit)} icon={<MetricIcon name="profit" />} tint="sage" detail="após materiais e terceirização" /></div>
           <section className="mt-7 rounded-[22px] border border-stone-200/70 bg-white p-5 sm:p-6"><div className="mb-5 flex items-center justify-between gap-3"><div><h2 className="font-serif text-xl">Serviços recentes</h2><p className="mt-1 text-xs text-stone-500">Últimos registros adicionados</p></div><button onClick={() => setPage('Serviços')} className="button-link text-xs font-semibold">Ver todos →</button></div>{recentServices.length ? <div className="divide-y divide-stone-100">{recentServices.map((service) => <ServiceRow key={service.id} service={service} clientName={clientById.get(service.clientId)?.name ?? 'Cliente'} onEdit={() => openServiceForm(service)} onDelete={() => void deleteService(service)} />)}</div> : <EmptyState text="Seus serviços registrados aparecerão aqui." />}</section>
           <div className="mt-5 grid gap-4 sm:grid-cols-2"><QuickAction icon="♧" title="Novo cliente" description="Cadastre os dados de um cliente" onClick={() => openClientForm()} /><QuickAction icon="◇" title="Registrar serviço" description="Vincule um serviço a um cliente" onClick={() => openServiceForm()} /></div>
         </section>}
@@ -592,9 +592,40 @@ function Brand({ compact = false }: { compact?: boolean }) {
 function Nav({ page, setPage }: { page: Page; setPage: (page: Page) => void }) {
   return <nav className="space-y-1">{pages.map((item) => <button key={item.name} onClick={() => setPage(item.name)} className={`button-nav flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm ${page === item.name ? 'button-nav-active' : ''}`}><span className="w-5 text-center text-lg">{item.icon}</span>{item.name}</button>)}</nav>
 }
-function Metric({ label, value, icon, tint, detail }: { label: string; value: string; icon: string; tint: string; detail: string }) {
+type MetricIconName = 'clients' | 'services' | 'revenue' | 'outsourced' | 'materials' | 'profit'
+
+function MetricIcon({ name, className = 'h-4 w-4' }: { name: MetricIconName; className?: string }) {
+  const common = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    className,
+  }
+
+  switch (name) {
+    case 'clients':
+      return <svg {...common}><path d="M16.5 19a5.5 5.5 0 0 0-9 0" /><circle cx="12" cy="8.5" r="3.4" /><path d="M19.2 18.6a5.3 5.3 0 0 0-2.3-3.8" /><path d="M4.8 18.6a5.3 5.3 0 0 1 2.3-3.8" /></svg>
+    case 'services':
+      return <svg {...common}><path d="M8 4.25h8.75A2.25 2.25 0 0 1 19 6.5v10.5A2.25 2.25 0 0 1 16.75 19.5H7.25A2.25 2.25 0 0 1 5 17.25V6.5A2.25 2.25 0 0 1 7.25 4.25Z" /><path d="M8 9h8" /><path d="M8 13h6" /><path d="M8.5 16.5h2.5" /></svg>
+    case 'revenue':
+      return <svg {...common}><path d="M5 15.5 15 5.5" /><path d="M9.5 5.5h5.5v5.5" /><path d="M5 18.5h14" /></svg>
+    case 'outsourced':
+      return <svg {...common}><path d="M7 7.5h10a2 2 0 0 1 2 2v7.25A2.25 2.25 0 0 1 16.75 19H7.25A2.25 2.25 0 0 1 5 16.75V9.5a2 2 0 0 1 2-2Z" /><path d="M9 7.5V6a3 3 0 0 1 6 0v1.5" /><path d="M8.5 13.5h7" /></svg>
+    case 'materials':
+      return <svg {...common}><path d="M4 9.5 12 4l8 5.5-8 5.5-8-5.5Z" /><path d="M4 9.5v5.5L12 20l8-5V9.5" /><path d="M12 15v5" /></svg>
+    case 'profit':
+      return <svg {...common}><path d="M12 2.3 14.7 8l6 .9-4.3 4.1 1 5.9-5.4-2.8-5.4 2.8 1-5.9L3.3 8.9l6-.9L12 2.3Z" /></svg>
+    default:
+      return null
+  }
+}
+
+function Metric({ label, value, icon, tint, detail }: { label: string; value: string; icon: ReactNode; tint: string; detail: string }) {
   const colors: Record<string, string> = { sand: 'bg-[#f3eee4] text-[#9f7945]', sage: 'bg-[#edf2ed] text-[#718a77]', rose: 'bg-[#f5eeeb] text-[#a37b68]', gold: 'bg-[#f6f0df] text-[#a8863d]' }
-  return <article className="rounded-[20px] border border-stone-200/70 bg-white p-4 sm:p-5"><div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold leading-tight text-stone-500 sm:text-xs">{label}</p><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm ${colors[tint]}`}>{icon}</span></div><p className="financial-value mt-3 truncate text-xl font-semibold sm:text-2xl">{value}</p><p className="mt-1 truncate text-[10px] text-stone-400 sm:text-xs">{detail}</p></article>
+  return <article className="rounded-[20px] border border-stone-200/70 bg-white p-4 sm:p-5"><div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold leading-tight text-stone-500 sm:text-xs">{label}</p><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${colors[tint]}`}>{icon}</span></div><p className="financial-value mt-3 truncate text-xl font-semibold sm:text-2xl">{value}</p><p className="mt-1 truncate text-[10px] text-stone-400 sm:text-xs">{detail}</p></article>
 }
 function PageHeading({ title, subtitle, button, onClick }: { title: string; subtitle: string; button?: string; onClick?: () => void }) {
   return <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-serif text-2xl">{title}</h2><p className="mt-1 text-sm font-semibold text-stone-500">{subtitle}</p></div>{button && <button onClick={onClick} className="button-primary rounded-full px-4 py-2.5 text-sm font-semibold">{button}</button>}</div>
@@ -602,8 +633,8 @@ function PageHeading({ title, subtitle, button, onClick }: { title: string; subt
 function ServiceRow({ service, clientName, onOpen, onEdit, onDelete, compact = false }: { service: Service; clientName: string; onOpen?: () => void; onEdit: () => void; onDelete: () => void; compact?: boolean }) {
   return <div className={`flex items-center gap-3 border-t border-stone-100 px-4 py-4 first:border-0 sm:px-5 ${compact ? 'px-1 sm:px-1' : ''}`}><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f3eee4] text-[#9f7945]">◇</span><div className="min-w-0 flex-1">{onOpen ? <button type="button" onClick={onOpen} title="Ver parcelas e pagamentos" aria-label={`Ver pagamentos de ${service.description}`} className="button-link block max-w-full truncate text-left text-sm font-semibold">{service.description}</button> : <p className="truncate text-sm font-semibold">{service.description}</p>}<p className="truncate text-xs text-stone-500">{clientName} · {formatDate(service.date)} · {service.responsible === 'terceirizado' ? 'Terceirizado' : 'Próprio'}</p><p className="mt-1 text-[11px] text-stone-400">Lucro {money(profit(service))}{service.thirdPartyCost ? ` · Terceiro ${money(service.thirdPartyCost)}` : ''}{service.materialsCost ? ` · Materiais ${money(service.materialsCost)}` : ''}</p></div><div className="text-right"><p className="financial-value whitespace-nowrap text-sm font-semibold">{money(service.chargedAmount)}</p><p className="text-[10px] text-stone-400">cobrado</p></div><div className="hidden gap-1 sm:flex"><button type="button" onClick={onEdit} aria-label="Editar serviço" title="Editar serviço" className="button-icon grid h-9 w-9 place-items-center rounded-lg">✎</button><button type="button" onClick={onDelete} aria-label="Excluir serviço" title="Excluir serviço" className="button-icon grid h-9 w-9 place-items-center rounded-lg">×</button></div><div className="flex flex-col gap-1 sm:hidden"><button type="button" onClick={onEdit} aria-label="Editar serviço" className="button-icon grid h-8 w-8 place-items-center rounded-lg text-sm">✎</button><button type="button" onClick={onDelete} aria-label="Excluir serviço" className="button-icon grid h-8 w-8 place-items-center rounded-lg text-sm">×</button></div></div>
 }
-function QuickAction({ icon, title, description, onClick }: { icon: string; title: string; description: string; onClick: () => void }) {
-  return <button onClick={onClick} className="button-card flex items-center gap-4 rounded-2xl border p-4 text-left"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#fff1e8] text-lg text-[#e85d0b]">{icon}</span><span><span className="block text-sm font-semibold">{title}</span><span className="mt-0.5 block text-xs text-stone-500">{description}</span></span><span className="ml-auto text-stone-400">→</span></button>
+function QuickAction({ icon, title, description, onClick }: { icon: ReactNode; title: string; description: string; onClick: () => void }) {
+  return <button onClick={onClick} className="button-card flex items-center gap-4 rounded-2xl border p-4 text-left"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#fff1e8] text-[#e85d0b]">{icon}</span><span><span className="block text-sm font-semibold">{title}</span><span className="mt-0.5 block text-xs text-stone-500">{description}</span></span><span className="ml-auto text-stone-400">→</span></button>
 }
 function EmptyState({ text }: { text: string }) { return <div className="px-4 py-9 text-center text-sm text-stone-400">{text}</div> }
 function Avatar({ name }: { name: string }) { return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f3eee4] text-sm font-semibold text-[#9f7945]">{name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('pt-BR')}</span> }
