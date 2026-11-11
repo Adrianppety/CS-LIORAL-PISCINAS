@@ -230,6 +230,15 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
   const [creatingAccount, setCreatingAccount] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const authMessages: Record<string, string> = {
+    invalid_credentials: 'Usuário ou senha incorretos.',
+    username_taken: 'Esse nome de usuário já está em uso.',
+    invalid_username: 'O nome de usuário informado é inválido.',
+    invalid_password: 'A senha deve ter entre 8 e 72 caracteres.',
+    account_unavailable: 'Não foi possível acessar essa conta. Contate o administrador.',
+    email_confirmation_enabled: 'O administrador precisa desativar a confirmação de e-mail no Supabase.',
+    signup_failed: 'Não foi possível criar a conta. Verifique a configuração do Supabase e tente novamente.',
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -256,25 +265,27 @@ function AuthScreen({ client }: { client: SupabaseClient }) {
       }>('username-auth', {
         body: { action: creatingAccount ? 'signup' : 'signin', username, password },
       })
-      if (error) throw error
-      if (!data?.ok || !data.session) {
-        const messages: Record<string, string> = {
-          invalid_credentials: 'Usuário ou senha incorretos.',
-          username_taken: 'Esse nome de usuário já está em uso.',
-          invalid_username: 'O nome de usuário informado é inválido.',
-          invalid_password: 'A senha deve ter entre 8 e 72 caracteres.',
-          account_unavailable: 'Não foi possível acessar essa conta. Contate o administrador.',
-          email_confirmation_enabled: 'O administrador precisa desativar a confirmação de e-mail no Supabase.',
-          signup_failed: 'Não foi possível criar a conta. Verifique a configuração e tente novamente.',
+      if (error) {
+        const context = 'context' in error ? error.context : null
+        if (context instanceof Response) {
+          const failure: unknown = await context.clone().json().catch(() => null)
+          const code = failure && typeof failure === 'object' && 'code' in failure && typeof failure.code === 'string'
+            ? failure.code
+            : ''
+          setMessage(authMessages[code] ?? 'O serviço de autenticação retornou um erro. Confira os logs da função username-auth no Supabase.')
+          return
         }
-        setMessage(messages[data?.code ?? ''] ?? 'Não foi possível autenticar. Tente novamente.')
+        throw error
+      }
+      if (!data?.ok || !data.session) {
+        setMessage(authMessages[data?.code ?? ''] ?? 'Não foi possível autenticar. Tente novamente.')
         return
       }
       const { error: sessionError } = await client.auth.setSession(data.session)
       if (sessionError) throw sessionError
     } catch (error) {
       console.error(error)
-      setMessage('Não foi possível conectar ao serviço de autenticação. Tente novamente.')
+      setMessage('Não foi possível acessar a função de autenticação. Confirme se username-auth está publicada no mesmo projeto Supabase configurado no app.')
     } finally {
       setBusy(false)
     }
