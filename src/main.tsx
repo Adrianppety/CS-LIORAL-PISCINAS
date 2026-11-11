@@ -2,7 +2,6 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
-import { db } from './db'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -17,7 +16,3 @@ if ('serviceWorker' in navigator) {
     })
   })
 }
-
-void db.open().catch((error: unknown) => {
-  console.error('Não foi possível abrir o banco de dados local.', error)
-})

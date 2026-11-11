@@ -1,6 +1,8 @@
-import { useMemo, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type Client, type Service, type ServiceMaterial, type ServicePayment } from './db'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react'
+import type { Session, SupabaseClient } from '@supabase/supabase-js'
+import { deleteClient as deleteCloudClient, deletePayment as deleteCloudPayment, deleteService as deleteCloudService, exportCloudData, importCloudData, loadCloudData, saveClient as saveCloudClient, savePayment as saveCloudPayment, saveService as saveCloudService, type CloudData, type DataBackup } from './cloudData'
+import { type Client, type Service, type ServiceMaterial, type ServicePayment } from './db'
+import { supabase, supabaseConfigError } from './supabaseClient'
 
 type Page = 'Visão geral' | 'Clientes' | 'Serviços' | 'Pagamentos' | 'Relatórios'
 type ClientDraft = Omit<Client, 'id' | 'createdAt'>
@@ -38,6 +40,16 @@ const toDisplayDate = (value: string) => {
 }
 const profit = (service: Service) => service.chargedAmount - (service.thirdPartyCost ?? 0) - (service.materialsCost ?? 0)
 
+function isDataBackup(value: unknown): value is DataBackup {
+  if (!value || typeof value !== 'object') return false
+  const backup = value as Record<string, unknown>
+  return backup.format === 'cs-litoral-backup'
+    && backup.version === 1
+    && Array.isArray(backup.clients)
+    && Array.isArray(backup.services)
+    && Array.isArray(backup.servicePayments)
+}
+
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-950/35 p-0 sm:items-center sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
     <section className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[28px] bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-[24px]">
@@ -64,7 +76,7 @@ function DateField({ label, name, initialValue = '', onChange, required = false 
   return <label className="block text-sm font-medium text-stone-600">{label}<input name={`${name}Display`} type="text" inputMode="numeric" placeholder="DD/MM/AAAA" autoComplete="off" maxLength={10} pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" title="Use o formato DD/MM/AAAA" value={value} onChange={update} required={required} className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-3.5 py-3 text-base outline-none transition focus:border-[#b48b50] focus:ring-2 focus:ring-[#b48b50]/15" /><input type="hidden" name={name} value={toIsoDate(value)} /></label>
 }
 
-function PaymentLedger({ serviceId, party, title, total, payments, notify }: { serviceId: number; party: ServicePayment['party']; title: string; total: number; payments: ServicePayment[]; notify: (message: string) => void }) {
+function PaymentLedger({ serviceId, userId, party, title, total, payments, notify, refreshData }: { serviceId: string; userId: string; party: ServicePayment['party']; title: string; total: number; payments: ServicePayment[]; notify: (message: string) => void; refreshData: () => Promise<void> }) {
   const [editing, setEditing] = useState<ServicePayment>()
   const [formVersion, setFormVersion] = useState(0)
   const entries = payments.filter((payment) => payment.party === party).sort((a, b) => a.date.localeCompare(b.date))
@@ -84,8 +96,8 @@ function PaymentLedger({ serviceId, party, title, total, payments, notify }: { s
     }
     const payment: ServicePayment = { serviceId, party, amount, date, note }
     try {
-      if (editing?.id !== undefined) await db.servicePayments.update(editing.id, payment)
-      else await db.servicePayments.add(payment)
+      await saveCloudPayment(userId, payment, editing?.id)
+      await refreshData()
       setEditing(undefined)
       setFormVersion((version) => version + 1)
       notify(editing ? 'Parcela atualizada.' : 'Parcela registrada.')
@@ -98,7 +110,8 @@ function PaymentLedger({ serviceId, party, title, total, payments, notify }: { s
   async function deletePayment(payment: ServicePayment) {
     if (payment.id === undefined || !window.confirm('Excluir esta parcela?')) return
     try {
-      await db.servicePayments.delete(payment.id)
+      await deleteCloudPayment(userId, payment.id)
+      await refreshData()
       if (editing?.id === payment.id) setEditing(undefined)
       notify('Parcela excluída.')
     } catch (error) {
@@ -153,7 +166,7 @@ function ClientForm({ initial, onClose, onSave }: { initial?: Client; onClose: (
   </form>
 }
 
-function ServiceForm({ clients, initial, initialClientId, onClose, onSave }: { clients: Client[]; initial?: Service; initialClientId?: number; onClose: () => void; onSave: (service: ServiceDraft) => void }) {
+function ServiceForm({ clients, initial, initialClientId, onClose, onSave }: { clients: Client[]; initial?: Service; initialClientId?: string; onClose: () => void; onSave: (service: ServiceDraft) => void }) {
   const [responsible, setResponsible] = useState<Service['responsible']>(initial?.responsible ?? 'proprio')
   const [charged, setCharged] = useState(initial ? String(initial.chargedAmount).replace('.', ',') : '')
   const [cost, setCost] = useState(initial?.thirdPartyCost ? String(initial.thirdPartyCost).replace('.', ',') : '')
@@ -187,7 +200,7 @@ function ServiceForm({ clients, initial, initialClientId, onClose, onSave }: { c
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const clientId = Number(form.get('clientId'))
+    const clientId = String(form.get('clientId') ?? '')
     const description = String(form.get('description') ?? '').trim()
     const date = String(form.get('date') ?? '')
     const chargedAmount = parseDecimal(String(form.get('chargedAmount') ?? ''))
@@ -213,17 +226,128 @@ function ServiceForm({ clients, initial, initialClientId, onClose, onSave }: { c
   </form>
 }
 
+function AuthScreen({ client }: { client: SupabaseClient }) {
+  const [creatingAccount, setCreatingAccount] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setMessage('')
+    const form = new FormData(event.currentTarget)
+    const email = String(form.get('email') ?? '').trim()
+    const password = String(form.get('password') ?? '')
+    try {
+      const result = creatingAccount
+        ? await client.auth.signUp({ email, password })
+        : await client.auth.signInWithPassword({ email, password })
+      if (result.error) throw result.error
+      setMessage(creatingAccount && !result.data.session
+        ? 'Conta criada. Verifique seu e-mail para confirmar o cadastro antes de entrar.'
+        : creatingAccount ? 'Conta criada com sucesso.' : 'Login realizado.')
+    } catch (error) {
+      console.error(error)
+      setMessage(error instanceof Error ? error.message : 'Não foi possível autenticar.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5 py-10"><section className="w-full max-w-md rounded-[24px] border border-stone-200/70 bg-white p-7 shadow-sm sm:p-9">
+    <Brand />
+    <h1 className="mt-8 font-serif text-3xl">{creatingAccount ? 'Criar conta' : 'Entrar'}</h1>
+    <p className="mt-2 text-sm text-stone-500">Acesse seus clientes, serviços e pagamentos com segurança.</p>
+    <form onSubmit={submit} className="mt-6 space-y-4">
+      <Field label="E-mail" name="email" type="email" autoComplete="email" required />
+      <Field label="Senha" name="password" type="password" autoComplete={creatingAccount ? 'new-password' : 'current-password'} minLength={8} required />
+      {message && <p role="status" className="text-sm text-stone-600">{message}</p>}
+      <button disabled={busy} className="button-primary w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">{busy ? 'Aguarde...' : creatingAccount ? 'Criar conta' : 'Entrar'}</button>
+    </form>
+    <button type="button" onClick={() => { setCreatingAccount((value) => !value); setMessage('') }} className="button-link mt-5 w-full text-center text-sm font-semibold">{creatingAccount ? 'Já tenho uma conta' : 'Criar uma conta'}</button>
+  </section></main>
+}
+
 function App() {
-  const clients = useLiveQuery(() => db.clients.orderBy('name').toArray()) ?? []
-  const services = useLiveQuery(() => db.services.toArray()) ?? []
-  const servicePayments = useLiveQuery(() => db.servicePayments.toArray()) ?? []
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
+  const client = supabase
+
+  useEffect(() => {
+    if (!client) {
+      setAuthLoading(false)
+      return
+    }
+    let active = true
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+    })
+    client.auth.getSession().then(({ data, error }) => {
+      if (!active) return
+      if (error) setAuthError(error.message)
+      setSession(data.session)
+      setAuthLoading(false)
+    }).catch((error: unknown) => {
+      if (!active) return
+      console.error(error)
+      setAuthError(error instanceof Error ? error.message : 'Não foi possível verificar a sessão.')
+      setAuthLoading(false)
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [client])
+
+  if (supabaseConfigError || !client) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5"><section className="max-w-xl rounded-[24px] border border-stone-200 bg-white p-8"><Brand /><h1 className="mt-8 font-serif text-2xl">Configuração do Supabase necessária</h1><p className="mt-3 text-sm leading-6 text-stone-600">{supabaseConfigError}</p><p className="mt-3 text-sm leading-6 text-stone-600">No computador, crie <code>.env.local</code> na pasta do projeto. No Vercel, configure essas variáveis em Project Settings → Environment Variables e publique um novo deploy.</p></section></main>
+  if (authLoading) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] text-sm text-stone-500">Conectando ao Supabase...</main>
+  if (authError) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5"><p role="alert" className="rounded-xl bg-white p-6 text-sm text-red-700">Erro ao verificar a sessão: {authError}</p></main>
+  if (!session) return <AuthScreen client={client} />
+  return <Dashboard key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} onSignOut={async () => {
+    const { error } = await client.auth.signOut()
+    if (error) throw error
+  }} />
+}
+
+function Dashboard({ userId, email, onSignOut }: { userId: string; email: string; onSignOut: () => Promise<void> }) {
+  const [cloudData, setCloudData] = useState<CloudData>({ clients: [], services: [], servicePayments: [] })
+  const [dataLoading, setDataLoading] = useState(true)
+  const [dataError, setDataError] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
+  const refreshData = useCallback(async () => {
+    const data = await loadCloudData(userId)
+    setCloudData(data)
+    setDataError('')
+  }, [userId])
+
+  useEffect(() => {
+    let active = true
+    setDataLoading(true)
+    loadCloudData(userId).then((data) => {
+      if (active) {
+        setCloudData(data)
+        setDataError('')
+      }
+    }).catch((error: unknown) => {
+      console.error(error)
+      if (active) setDataError(error instanceof Error ? error.message : 'Falha ao carregar os dados.')
+    }).finally(() => {
+      if (active) setDataLoading(false)
+    })
+    return () => { active = false }
+  }, [userId])
+
+  const clients = cloudData.clients
+  const services = cloudData.services
+  const servicePayments = cloudData.servicePayments
   const [page, setPage] = useState<Page>('Visão geral')
   const [modal, setModal] = useState<'client' | 'service' | null>(null)
   const [editingClient, setEditingClient] = useState<Client | undefined>()
   const [editingService, setEditingService] = useState<Service | undefined>()
   const [activeService, setActiveService] = useState<Service | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
-  const [initialServiceClientId, setInitialServiceClientId] = useState<number | undefined>()
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [initialServiceClientId, setInitialServiceClientId] = useState<string | undefined>()
   const [search, setSearch] = useState('')
   const [serviceClientId, setServiceClientId] = useState('')
   const [serviceResponsible, setServiceResponsible] = useState('')
@@ -232,12 +356,7 @@ function App() {
   const [reportEnd, setReportEnd] = useState(today())
   const [reportClientId, setReportClientId] = useState('')
   const [message, setMessage] = useState('')
-  const activeServicePayments = useLiveQuery(
-    () => activeService?.id === undefined
-      ? Promise.resolve([] as ServicePayment[])
-      : db.servicePayments.where('serviceId').equals(activeService.id).toArray(),
-    [activeService?.id],
-  ) ?? []
+  const activeServicePayments = servicePayments.filter((payment) => payment.serviceId === activeService?.id)
 
   const clientById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients])
   const totalCharged = services.reduce((total, service) => total + service.chargedAmount, 0)
@@ -246,7 +365,7 @@ function App() {
   const totalProfit = services.reduce((total, service) => total + profit(service), 0)
   const recentServices = [...services].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5)
   const visibleClients = clients.filter((client) => `${client.name} ${client.phone}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))
-  const visibleServices = services.filter((service) => !serviceClientId || service.clientId === Number(serviceClientId)).filter((service) => !serviceResponsible || service.responsible === serviceResponsible).sort((a, b) => b.date.localeCompare(a.date))
+  const visibleServices = services.filter((service) => !serviceClientId || service.clientId === serviceClientId).filter((service) => !serviceResponsible || service.responsible === serviceResponsible).sort((a, b) => b.date.localeCompare(a.date))
   const paymentGroups = clients
     .map((client) => {
       const clientServices = services.filter((service) => service.clientId === client.id)
@@ -259,7 +378,7 @@ function App() {
       return { client, services: clientServices, charged, received, outstanding: Math.max(0, charged - received), outsourced, materials, paidToThirdParties, thirdPartyOutstanding: Math.max(0, outsourced - paidToThirdParties) }
     })
     .filter((group) => group.services.length > 0 && `${group.client.name} ${group.client.phone}`.toLocaleLowerCase('pt-BR').includes(paymentSearch.toLocaleLowerCase('pt-BR')))
-  const filteredServices = services.filter((service) => (!reportStart || service.date.slice(0, 10) >= reportStart) && (!reportEnd || service.date.slice(0, 10) <= reportEnd)).filter((service) => !reportClientId || service.clientId === Number(reportClientId)).sort((a, b) => b.date.localeCompare(a.date))
+  const filteredServices = services.filter((service) => (!reportStart || service.date.slice(0, 10) >= reportStart) && (!reportEnd || service.date.slice(0, 10) <= reportEnd)).filter((service) => !reportClientId || service.clientId === reportClientId).sort((a, b) => b.date.localeCompare(a.date))
   const reportCharged = filteredServices.reduce((total, service) => total + service.chargedAmount, 0)
   const reportOutsourced = filteredServices.reduce((total, service) => total + (service.thirdPartyCost ?? 0), 0)
   const reportMaterials = filteredServices.reduce((total, service) => total + (service.materialsCost ?? 0), 0)
@@ -271,6 +390,50 @@ function App() {
     setMessage(text)
     window.setTimeout(() => setMessage(''), 3200)
   }
+  async function signOut() {
+    try {
+      await onSignOut()
+    } catch (error) {
+      console.error(error)
+      notify('Não foi possível sair da conta.')
+    }
+  }
+  async function exportBackup() {
+    try {
+      const backup = await exportCloudData(userId)
+      const file = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(file)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `cs-litoral-backup-${today()}.json`
+      anchor.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      notify('Backup exportado com sucesso.')
+    } catch (error) {
+      console.error(error)
+      notify('Não foi possível exportar os dados.')
+    }
+  }
+  async function importBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      notify('O arquivo deve ter no máximo 10 MB.')
+      return
+    }
+    if (!window.confirm('Importar este backup? Registros com o mesmo ID serão atualizados; os demais serão adicionados. Outros registros da conta serão mantidos.')) return
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      if (!isDataBackup(parsed)) throw new Error('Arquivo inválido ou incompatível. Selecione um backup exportado por este aplicativo.')
+      await importCloudData(parsed)
+      await refreshData()
+      notify('Dados importados com sucesso.')
+    } catch (error) {
+      console.error(error)
+      notify(error instanceof Error ? `Falha ao importar: ${error.message}` : 'Não foi possível importar os dados.')
+    }
+  }
   function generateMonthlyPdf() {
     if (!reportStart || !reportEnd || reportStart > reportEnd) {
       notify('Informe um período válido para gerar o relatório.')
@@ -279,7 +442,7 @@ function App() {
     window.print()
   }
   function openClientForm(client?: Client) { setEditingClient(client); setModal('client') }
-  function openServiceForm(service?: Service, clientId?: number) {
+  function openServiceForm(service?: Service, clientId?: string) {
     if (!clients.length) { notify('Cadastre um cliente antes de registrar um serviço.'); setPage('Clientes'); return }
     setEditingService(service)
     setInitialServiceClientId(clientId)
@@ -287,48 +450,45 @@ function App() {
   }
   async function saveClient(draft: ClientDraft) {
     try {
-      if (editingClient?.id !== undefined) { await db.clients.update(editingClient.id, draft); notify('Cadastro do cliente atualizado.') }
-      else { await db.clients.add({ ...draft, createdAt: new Date().toISOString() }); notify('Cliente cadastrado com sucesso.') }
+      await saveCloudClient(userId, draft, editingClient?.id)
+      await refreshData()
+      notify(editingClient ? 'Cadastro do cliente atualizado.' : 'Cliente cadastrado com sucesso.')
       setModal(null); setEditingClient(undefined)
     } catch (error) { console.error(error); notify('Não foi possível salvar o cliente.') }
   }
   async function saveService(draft: ServiceDraft) {
     try {
-      if (editingService?.id !== undefined) { await db.services.update(editingService.id, draft); notify('Serviço atualizado com sucesso.') }
-      else { await db.services.add(draft); notify('Serviço registrado com sucesso.') }
+      await saveCloudService(draft, editingService?.id)
+      await refreshData()
+      notify(editingService ? 'Serviço atualizado com sucesso.' : 'Serviço registrado com sucesso.')
       setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined)
     } catch (error) { console.error(error); notify('Não foi possível salvar o serviço.') }
   }
   async function deleteService(service: Service) {
-    if (service.id === undefined || !window.confirm(`Excluir o serviço "${service.description}"?`)) return
+    if (!service.id || !window.confirm(`Excluir o serviço "${service.description}"?`)) return
     try {
-      await db.transaction('rw', db.services, db.servicePayments, async () => {
-        await db.servicePayments.where('serviceId').equals(service.id!).delete()
-        await db.services.delete(service.id!)
-      })
+      await deleteCloudService(userId, service.id)
+      await refreshData()
       notify('Serviço e parcelas excluídos.')
     }
     catch (error) { console.error(error); notify('Não foi possível excluir o serviço.') }
   }
   async function deleteClient(client: Client) {
-    if (client.id === undefined || !window.confirm(`Excluir ${client.name} e todo o histórico de serviços deste cliente?`)) return
+    if (!client.id || !window.confirm(`Excluir ${client.name} e todo o histórico de serviços deste cliente?`)) return
     try {
-      await db.transaction('rw', db.clients, db.services, db.servicePayments, async () => {
-        const clientServices = await db.services.where('clientId').equals(client.id!).toArray()
-        for (const service of clientServices) {
-          if (service.id !== undefined) await db.servicePayments.where('serviceId').equals(service.id).delete()
-        }
-        await db.services.where('clientId').equals(client.id!).delete()
-        await db.clients.delete(client.id!)
-      })
+      await deleteCloudClient(userId, client.id)
+      await refreshData()
       setSelectedClientId(null); notify('Cliente e histórico excluídos.')
     } catch (error) { console.error(error); notify('Não foi possível excluir o cliente.') }
   }
 
+  if (dataLoading) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] text-sm text-stone-500">Carregando seus dados...</main>
+  if (dataError) return <main className="grid min-h-screen place-items-center bg-[#f8f6f1] px-5"><section className="max-w-lg rounded-2xl bg-white p-6 text-center"><p role="alert" className="text-sm text-red-700">Não foi possível carregar os dados: {dataError}</p><button onClick={() => { setDataLoading(true); void refreshData().catch((error: unknown) => setDataError(error instanceof Error ? error.message : 'Falha ao carregar os dados.')).finally(() => setDataLoading(false)) }} className="button-primary mt-4 rounded-xl px-5 py-3 text-sm font-semibold">Tentar novamente</button></section></main>
+
   return <div className="min-h-screen bg-[#f8f6f1] text-stone-800"><div className="mx-auto flex min-h-screen max-w-[1440px]">
-    <aside className="hidden w-[248px] shrink-0 border-r border-stone-200/80 bg-[#fbfaf7] px-5 py-8 md:flex md:flex-col"><Brand /><p className="mb-3 mt-12 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-stone-400">Menu principal</p><Nav page={page} setPage={setPage} /></aside>
+    <aside className="hidden w-[248px] shrink-0 border-r border-stone-200/80 bg-[#fbfaf7] px-5 py-8 md:flex md:flex-col"><Brand /><p className="mb-3 mt-12 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-stone-400">Menu principal</p><Nav page={page} setPage={setPage} /><div className="mt-auto border-t border-stone-200 pt-4"><p className="truncate px-3 text-xs text-stone-500">{email}</p><button onClick={() => void signOut()} className="button-link mt-2 px-3 text-sm font-semibold">Sair da conta</button></div></aside>
     <main className="min-w-0 flex-1 pb-24 md:pb-8">
-      <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-stone-200/70 bg-[#f8f6f1]/90 px-5 backdrop-blur-md sm:px-8 lg:px-11"><div className="md:hidden"><Brand compact /></div><div className="hidden md:block"><p className="text-sm capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="font-serif text-[26px] leading-tight">{page}</h1></div><button onClick={() => openServiceForm()} className="button-primary rounded-full px-4 py-2.5 text-sm font-semibold shadow-sm sm:px-5"><span className="mr-1.5">＋</span> Novo serviço</button></header>
+      <header className="sticky top-0 z-20 flex min-h-[76px] items-center justify-between gap-2 border-b border-stone-200/70 bg-[#f8f6f1]/90 px-3 backdrop-blur-md sm:px-8 lg:px-11"><div className="md:hidden"><Brand compact /></div><div className="hidden md:block"><p className="text-sm capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="font-serif text-[26px] leading-tight">{page}</h1></div><div className="flex items-center gap-1.5 sm:gap-2"><input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={(event) => void importBackup(event)} /><button type="button" onClick={() => void exportBackup()} aria-label="Exportar dados" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold sm:px-3"><span aria-hidden="true">⇩ </span><span className="hidden sm:inline">Exportar</span></button><button type="button" onClick={() => fileInput.current?.click()} aria-label="Importar dados" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold sm:px-3"><span aria-hidden="true">⇧ </span><span className="hidden sm:inline">Importar</span></button><button type="button" onClick={() => void signOut()} aria-label="Sair da conta" title="Sair da conta" className="button-secondary rounded-full px-2.5 py-2.5 text-xs font-semibold md:hidden">Sair</button><button onClick={() => openServiceForm()} className="button-primary rounded-full px-3 py-2.5 text-xs font-semibold shadow-sm sm:px-5 sm:text-sm"><span className="mr-1.5">＋</span><span className="hidden sm:inline">Novo serviço</span><span className="sm:hidden">Novo</span></button></div></header>
       <div className="mx-auto max-w-[1160px] px-5 py-7 sm:px-8 lg:px-11 lg:py-9"><div className="mb-7 md:hidden"><p className="text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h1 className="mt-1 font-serif text-3xl">{page}</h1></div>
         {page === 'Visão geral' && <section>
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3"><div><p className="font-serif text-2xl">Resumo da operação</p><p className="mt-1 text-sm font-semibold text-stone-500">Acompanhe clientes, serviços e resultados.</p></div><span className="rounded-full border border-stone-200 bg-white/70 px-3 py-1.5 text-xs capitalize text-stone-500">{new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span></div>
@@ -359,7 +519,7 @@ function App() {
 
         {page === 'Relatórios' && <section className="print-report">
           <PageHeading title="Relatório mensal" subtitle="Faturamento, custos e lucro dos serviços no período selecionado." button="Gerar PDF mensal" onClick={generateMonthlyPdf} />
-          <p className="mb-5 text-sm text-stone-500">Período: {formatDate(reportStart)} a {formatDate(reportEnd)}{reportClientId ? ` · Cliente: ${clientById.get(Number(reportClientId))?.name ?? ''}` : ' · Todos os clientes'}</p>
+          <p className="mb-5 text-sm text-stone-500">Período: {formatDate(reportStart)} a {formatDate(reportEnd)}{reportClientId ? ` · Cliente: ${clientById.get(reportClientId)?.name ?? ''}` : ' · Todos os clientes'}</p>
           <div className="report-controls mb-5 grid gap-4 rounded-[22px] border border-stone-200/70 bg-white p-4 sm:grid-cols-3 sm:px-5">
             <DateField label="Data inicial" name="reportStart" initialValue={reportStart} onChange={setReportStart} />
             <DateField label="Data final" name="reportEnd" initialValue={reportEnd} onChange={setReportEnd} />
@@ -377,7 +537,7 @@ function App() {
   {message && <div role="status" className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-stone-800 px-5 py-3 text-center text-sm text-white shadow-lg md:bottom-7">{message}</div>}
   {modal === 'client' && <Modal title={editingClient ? 'Editar cliente' : 'Novo cliente'} onClose={() => { setModal(null); setEditingClient(undefined) }}><ClientForm key={editingClient?.id ?? 'new-client'} initial={editingClient} onClose={() => { setModal(null); setEditingClient(undefined) }} onSave={(draft) => void saveClient(draft)} /></Modal>}
   {modal === 'service' && <Modal title={editingService ? 'Editar serviço' : 'Novo serviço'} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }}><ServiceForm key={editingService?.id ?? `new-service-${initialServiceClientId ?? ''}`} clients={clients} initial={editingService} initialClientId={initialServiceClientId} onClose={() => { setModal(null); setEditingService(undefined); setInitialServiceClientId(undefined) }} onSave={(draft) => void saveService(draft)} /></Modal>}
-  {activeService && <ServiceDetails service={activeService} clientName={clientById.get(activeService.clientId)?.name ?? 'Cliente'} payments={activeServicePayments} notify={notify} onClose={() => setActiveService(null)} />}
+  {activeService && <ServiceDetails service={activeService} userId={userId} clientName={clientById.get(activeService.clientId)?.name ?? 'Cliente'} payments={activeServicePayments} notify={notify} refreshData={refreshData} onClose={() => setActiveService(null)} />}
   {activeClient && <Modal title={activeClient.name} onClose={() => setSelectedClientId(null)}>
     <div className="mb-5 rounded-2xl bg-[#f8f6f1] p-4"><p className="text-sm text-stone-600">{activeClient.phone || 'Sem telefone'}</p>{activeClient.address && <p className="mt-1 text-sm text-stone-500">{activeClient.address}</p>}{activeClient.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-stone-500">{activeClient.notes}</p>}<p className="mt-2 text-xs text-stone-400">Cliente desde {formatDate(activeClient.createdAt)}</p></div>
     <div className="mb-5 grid grid-cols-3 gap-2 text-center"><Summary label="Serviços" value={String(clientServices.length)} /><Summary label="Faturado" value={money(clientServices.reduce((sum, service) => sum + service.chargedAmount, 0))} /><Summary label="Lucro" value={money(clientServices.reduce((sum, service) => sum + profit(service), 0))} /></div>
@@ -410,7 +570,7 @@ function QuickAction({ icon, title, description, onClick }: { icon: string; titl
 function EmptyState({ text }: { text: string }) { return <div className="px-4 py-9 text-center text-sm text-stone-400">{text}</div> }
 function Avatar({ name }: { name: string }) { return <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#f3eee4] text-sm font-semibold text-[#9f7945]">{name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('pt-BR')}</span> }
 function Summary({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-[#fbfaf7] px-2 py-3"><p className="truncate text-[10px] font-semibold uppercase tracking-wide text-stone-400">{label}</p><p className="financial-value mt-1 truncate text-sm font-semibold">{value}</p></div> }
-function ServiceDetails({ service, clientName, payments, notify, onClose }: { service: Service; clientName: string; payments: ServicePayment[]; notify: (message: string) => void; onClose: () => void }) {
+function ServiceDetails({ service, userId, clientName, payments, notify, refreshData, onClose }: { service: Service; userId: string; clientName: string; payments: ServicePayment[]; notify: (message: string) => void; refreshData: () => Promise<void>; onClose: () => void }) {
   const clientPaid = payments.filter((payment) => payment.party === 'client').reduce((sum, payment) => sum + payment.amount, 0)
   const thirdPartyPaid = payments.filter((payment) => payment.party === 'thirdParty').reduce((sum, payment) => sum + payment.amount, 0)
   const isOutsourced = service.responsible === 'terceirizado'
@@ -419,8 +579,8 @@ function ServiceDetails({ service, clientName, payments, notify, onClose }: { se
     <div className={`mb-4 grid grid-cols-2 gap-2 text-center ${isOutsourced ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}><Summary label="Cobrado" value={money(service.chargedAmount)} /><Summary label="Recebido" value={money(clientPaid)} /><Summary label="Materiais" value={money(service.materialsCost ?? 0)} /><Summary label="Lucro" value={money(profit(service))} />{isOutsourced && <><Summary label="Custo terceiro" value={money(service.thirdPartyCost ?? 0)} /><Summary label="Pago terceiro" value={money(thirdPartyPaid)} /></>}</div>
     {!!service.materials?.length && <section className="mb-4 rounded-xl border border-stone-200/70 bg-white p-4"><h3 className="mb-2 font-serif text-lg">Materiais usados</h3><div className="divide-y divide-stone-100">{service.materials.map((material) => <div key={material.id} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="truncate">{material.name}</span><span className="whitespace-nowrap font-semibold">{money(material.cost)}</span></div>)}</div><div className="mt-2 flex justify-between border-t border-stone-100 pt-3 text-sm font-semibold"><span>Total de materiais</span><span>{money(service.materialsCost ?? service.materials.reduce((sum, material) => sum + material.cost, 0))}</span></div></section>}
     <div className="space-y-4">
-      <PaymentLedger serviceId={service.id!} party="client" title="Parcelas do cliente" total={service.chargedAmount} payments={payments} notify={notify} />
-      {service.responsible === 'terceirizado' && <PaymentLedger serviceId={service.id!} party="thirdParty" title="Parcelas do terceirizado" total={service.thirdPartyCost ?? 0} payments={payments} notify={notify} />}
+      {service.id && <PaymentLedger serviceId={service.id} userId={userId} party="client" title="Parcelas do cliente" total={service.chargedAmount} payments={payments} notify={notify} refreshData={refreshData} />}
+      {service.id && service.responsible === 'terceirizado' && <PaymentLedger serviceId={service.id} userId={userId} party="thirdParty" title="Parcelas do terceirizado" total={service.thirdPartyCost ?? 0} payments={payments} notify={notify} refreshData={refreshData} />}
     </div>
     {service.observations && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-[#f8f6f1] p-3 text-sm text-stone-600">{service.observations}</p>}
   </Modal>

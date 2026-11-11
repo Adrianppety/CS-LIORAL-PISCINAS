@@ -1,21 +1,25 @@
 # CS Litoral Serviços
 
-Aplicativo frontend para gerenciar clientes e serviços prestados. Os registros ficam no IndexedDB do navegador, gerenciado pelo Dexie, e permanecem disponíveis após atualizar ou fechar o aplicativo.
+Aplicativo para gerenciar clientes, serviços e parcelas de pagamentos, com autenticação e armazenamento no Supabase. Depois do login, os dados são sincronizados com a nuvem e cada conta acessa apenas seus próprios registros.
+
+## Configuração
+
+Siga [BACKEND_PLANEJADO.md](BACKEND_PLANEJADO.md) para criar o projeto Supabase, executar a migração SQL e configurar as variáveis de ambiente localmente e no Vercel. Em resumo, o app precisa de `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`; use somente a chave pública `anon`/`publishable`, nunca `service_role`.
 
 ## Executar localmente
+
+Copie `.env.example` para `.env.local`, configure as variáveis do Supabase e execute:
 
 ```sh
 npm install
 npm run dev
 ```
 
-## Dados locais
+## Backups
 
-Cadastros de clientes e serviços são armazenados apenas neste navegador e neste dispositivo. Limpar os dados do site no navegador remove esses registros. A aplicação não usa login, servidor, API externa ou sincronização em nuvem.
+Use **Exportar** e **Importar** no cabeçalho do aplicativo para baixar ou mesclar um backup JSON. A importação atualiza registros com IDs iguais, acrescenta os novos e preserva os registros que não estão no arquivo.
 
-O banco atual contém `clients`, `services` e `servicePayments`. Cada serviço pode guardar várias linhas de materiais (descrição e valor); o total é somado automaticamente e entra no cálculo do lucro junto ao custo terceirizado. As parcelas ficam ligadas ao serviço e identificam separadamente o pagador (`client` ou `thirdParty`). Ao atualizar uma instalação anterior, os clientes locais são preservados e enriquecidos com campos de contato; as tabelas antigas de produtos, vendas e pagamentos são removidas na migração do IndexedDB.
-
-Consulte [BACKEND_PLANEJADO.md](BACKEND_PLANEJADO.md) para a documentação de uma possível evolução futura.
+Dados de instalações antigas que ainda estejam no IndexedDB do navegador não são migrados automaticamente para o Supabase.
 
 ## Build
 

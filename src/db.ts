@@ -1,7 +1,5 @@
-import Dexie, { type EntityTable } from 'dexie'
-
 export interface Client {
-  id?: number
+  id?: string
   name: string
   phone: string
   email: string
@@ -17,8 +15,8 @@ export interface ServiceMaterial {
 }
 
 export interface Service {
-  id?: number
-  clientId: number
+  id?: string
+  clientId: string
   description: string
   date: string
   responsible: 'proprio' | 'terceirizado'
@@ -30,36 +28,10 @@ export interface Service {
 }
 
 export interface ServicePayment {
-  id?: number
-  serviceId: number
+  id?: string
+  serviceId: string
   party: 'client' | 'thirdParty'
   amount: number
   date: string
   note: string
 }
-
-class ServicesDatabase extends Dexie {
-  clients!: EntityTable<Client, 'id'>
-  services!: EntityTable<Service, 'id'>
-  servicePayments!: EntityTable<ServicePayment, 'id'>
-
-  constructor() {
-    super('atelie-vendas')
-    this.version(4).stores({ clients: '++id, name, createdAt', services: '++id, clientId, date, responsible' }).upgrade(async (transaction) => {
-      const legacyClients = await transaction.table('clients').toArray() as Array<Partial<Client> & { id: number }>
-      const migratedClients: Client[] = legacyClients.map((client) => ({
-        id: client.id,
-        name: client.name ?? '',
-        phone: client.phone ?? '',
-        createdAt: client.createdAt ?? new Date().toISOString(),
-        email: client.email ?? '',
-        address: client.address ?? '',
-        notes: client.notes ?? '',
-      })) as Client[]
-      await transaction.table('clients').bulkPut(migratedClients)
-    })
-    this.version(5).stores({ servicePayments: '++id, serviceId, party, date' })
-  }
-}
-
-export const db = new ServicesDatabase()
